@@ -1,49 +1,52 @@
 module Main where
 
-import Control.Concurrent.STM (TQueue, atomically, newTQueueIO, tryReadTQueue, writeTQueue)
-import Control.Monad (unless, when, void)
-import Graphics.UI.GLFW as GLFW
+import Control.Monad
+import qualified Graphics.UI.GLFW as GLFW
+import Graphics.Rendering.OpenGL as GL
+import Reactive.Banana as R
+import Reactive.Banana.Frameworks as R
+import System.IO
+import System.Exit
 
-data Event =
-    EventError              !GLFW.Error    !String
-  | EventWindowPos          !GLFW.Window   !Int !Int
-  | EventWindowSize         !GLFW.Window   !Int !Int
-  | EventWindowClose        !GLFW.Window
-  | EventWindowRefresh      !GLFW.Window
-  | EventWindowFocus        !GLFW.Window   !GLFW.FocusState
-  | EventWindowIconify      !GLFW.Window   !GLFW.IconifyState
-  | EventFramebufferSize    !GLFW.Window   !Int !Int
-  | EventMouseButton        !GLFW.Window   !GLFW.MouseButton !GLFW.MouseButtonState !GLFW.ModifierKeys
-  | EventCursorPos          !GLFW.Window   !Double !Double
-  | EventCursorEnter        !GLFW.Window   !GLFW.CursorState
-  | EventScroll             !GLFW.Window   !Double !Double
-  | EventKey                !GLFW.Window   !GLFW.Key !Int !GLFW.KeyState !GLFW.ModifierKeys
-  | EventChar               !GLFW.Window   !Char
-  deriving Show
+errorCallback :: GLFW.ErrorCallback
+errorCallback err desc = hPutStrLn stderr desc
 
-main = do
-        eventsChan <- newTQueueIO :: IO (TQueue Event)
-        withWindow width height "LambdaBird" $ \win -> do
-            putStrLn "end!"
-        where width = 1024
-              height = 768
+keyCallback :: GLFW.KeyCallback
+keyCallback w key scancode action mods = undefined
 
-withWindow :: Int -> Int -> String -> (GLFW.Window -> IO()) -> IO ()
-withWindow width height title f =
-    do
-        GLFW.setErrorCallback $ Just simpleErrorCallback
-        r <- GLFW.init
-        when r $
-            do
-                m <- GLFW.createWindow width height title Nothing Nothing
-                case m of
-                    (Just win) -> do
-                        GLFW.makeContextCurrent m
-                        f win
-                        GLFW.setErrorCallback $ Just simpleErrorCallback
-                        GLFW.destroyWindow win
-                    Nothing -> return ()
-                GLFW.terminate
+resize w h = do print "resize"
 
-simpleErrorCallback e s = putStrLn $ unwords [show e, show s]
+type Vec2 = (GLfloat, GLfloat)
 
+
+drawTriangles :: [Vec2] -> IO()
+drawTriangles triList = do
+    GL.color $ Color3 0 0 (0 :: GLfloat)
+    GL.renderPrimitive Triangles $ mapM_ (\(x, y) -> vertex (Vertex2 x y)) triList
+
+mainLoop win = do
+    shouldClose <- GLFW.windowShouldClose win
+    unless shouldClose $ do
+        GL.clearColor $= Color4 1 1 1 1
+        GL.clear [ColorBuffer]
+        drawTriangles [(-1,0), (1,0), (0,1)]
+        GLFW.swapBuffers win
+        GLFW.pollEvents
+        mainLoop win
+
+main = let width   = 1024
+           height  = 768
+           fps     = 60
+           hz      = 1 / 60 :: Float
+        in do
+            GLFW.init
+            GLFW.defaultWindowHints
+            Just win <- GLFW.createWindow width height "Lambda Bird" Nothing Nothing
+            GLFW.makeContextCurrent (Just win)
+            GLFW.setWindowSizeCallback win $ Just (\_ w h -> resize w h)
+            GLFW.setKeyCallback win $ (Just keyCallback)
+            GLFW.swapInterval 1
+            mainLoop win
+            GLFW.destroyWindow win
+            GLFW.terminate
+            exitSuccess
